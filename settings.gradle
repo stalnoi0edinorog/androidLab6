@@ -1,0 +1,3 @@
+include ':continuewatch'
+include ':app'
+rootProject.name = "Lab6"
