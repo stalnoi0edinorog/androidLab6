@@ -132,9 +132,59 @@
 
 #### KotlinCoroutines
 
-ʘ‿ʘ  как-то сложно ʘ‿ʘ 
+Листинг KotlinCoroutines:
+
+      class KotlinCoroutines: AppCompatActivity() {
+          var secondsElapsed: Int = 0
+          private  lateinit var prefs: SharedPreferences
+          private lateinit var job: Job
+
+
+          private fun update() {
+              textSecondsElapsed.text = "Second elapsed: " + secondsElapsed++
+          }
+
+          override fun onCreate(savedInstanceState: Bundle?) {
+              super.onCreate(savedInstanceState)
+              setContentView(R.layout.activity_main)
+              prefs = getSharedPreferences(SECONDS, Context.MODE_PRIVATE)
+              }
+
+          override fun onStart() {
+              super.onStart()
+              if (prefs.contains(SECONDS))
+                  secondsElapsed = prefs.getInt(SECONDS, 0)
+          }
+
+          override fun onResume() {
+              super.onResume()
+              job = CoroutineScope(Dispatchers.Main).launch {
+                  while (true) {
+                      delay(1000)
+                      update()
+                  }
+              }
+          }
+
+          override fun onPause() {
+              prefs.edit().putInt(SECONDS, secondsElapsed).apply()
+              job.cancel()
+              super.onPause()
+          }
+      }
+
+Изначально в методе onResume использовала GlobalScope.launch, но почти везде этого рекомендуют не делать, поэтому заменила на CoroutineScope(Dispatchers.Main).launch.
+
+CoroutineScope - интерфейс, определяющий область действия новых корутин. При создании CoroutineScope принимает CoroutineContext в качестве параметра для своего конструктора.
+
+Job — это управляющий корутиной элемент . Для каждой создаваемой корутины (с помощью launch или async) он возвращает экземпляр Job, который однозначно идентифицирует корутину и управляет ее жизненным циклом. 
+
+CoroutineContext — это набор элементов, определяющих поведение корутины.
+
+Dispatchers.Main — один из параметров метода launch(). Здесь указывается диспетчер для созданной корутины. Если указать Dispatchers.Main, то корутина будет выполняться в основном потоке.
 
 ### Задача 2. Загрузка картинки в фоновом потоке (AsyncTask) 
+
 Необходимо создать приложение, которое скачивает картинку из интернета и размещает ее в `ImaveView` в `Activity`. За основу можно взять [код со StackOverflow](https://stackoverflow.com/a/9288544).
 
 Добавим разрешение на доступ к Интернету в AndroidManifest:
@@ -155,11 +205,11 @@
               setContentView(binding.root)
 
               binding.button.setOnClickListener {
-                  DownloadImageTask(binding).execute(URL)
+                  downloadImageTask(binding).execute(URL)
               }
           }
 
-          inner class DownloadImageTask(private val binding: ActivityMainBinding)
+          inner class downloadImageTask(private val binding: ActivityMainBinding)
               : AsyncTask<String, Void, Bitmap>() {
 
               override fun doInBackground(vararg params: String?): Bitmap? {
@@ -184,7 +234,7 @@
           }
       }
       
-Создаю объект URL и передаю в его конструктор адрес, URL которого передается в виде текстовой строки. В процессе создания объекта проверяется заданный адрес URL.. Если адрес указан неверно, возникает исключение MalformedURLException. После вызываю openStream() и считываю информацию. 
+Создаю объект URL и передаю в его конструктор адрес, URL которого передается в виде текстовой строки. В процессе создания объекта проверяется заданный адрес URL. Если адрес указан неверно, возникает исключение MalformedURLException. После вызываю openStream() и считываю информацию. 
 
 Bitmap - класс, предназначенный для работы с растровыми изображениями. 
 
@@ -201,8 +251,42 @@ Bitmap - класс, предназначенный для работы с ра�
 ![after](forReport/screen2.JPG)
 
 ### Задача 3. Загрузка картинки в фоновом потоке (Kotlin Coroutines) 
-Переписать предыдущее приложение с использованием Kotlin Coroutines.
-ʘ‿ʘ 
+
+Листинг MainActivityCoroutines:
+
+      class MainActivityCoroutines : AppCompatActivity() {
+          override fun onCreate(savedInstanceState: Bundle?) {
+              super.onCreate(savedInstanceState)
+
+              val binding = ActivityMainBinding.inflate(layoutInflater)
+
+              setContentView(binding.root)
+
+              binding.button.setOnClickListener {
+                  CoroutineScope(Dispatchers.Main).launch(Dispatchers.IO) {
+                      val image = downloadImageTask(URL)
+                      launch(Dispatchers.Main) {
+                          binding.image.setImageBitmap(image)
+                      }
+                  }
+                  binding.button.visibility = View.INVISIBLE
+              }
+          }
+
+          private fun downloadImageTask(url: String): Bitmap? {
+              var image: Bitmap? = null
+              try {
+                  val inputStream: InputStream = URL(url).openStream()
+                  image = BitmapFactory.decodeStream(inputStream)
+              } catch (e: Exception) {
+                  Log.e("ERROR", e.message.toString())
+                  e.printStackTrace()
+              }
+              return image
+          }
+      }
+      
+Dispatchers.IO используется для фоновых задач, неблокирующих основной поток. Скачивалась та же самая картинка, поэтому результат тот же, что и в предыдущей задаче.
 
 ### Задача 4. Использование сторонних библиотек 
 Многие "стандартные" задачи имеют "стандартные" решения. Задача скачивания изображения в фоне возникает настолько часто, что уже сравнительно давно решение этой задачи занимает всего лишь несколько строчек. Нужно убедиться в этом на примере одной (любой) библиотеки [Glide](https://github.com/bumptech/glide#how-do-i-use-glide), [picasso](https://square.github.io/picasso/) или [fresco](https://frescolib.org/docs/index.html).
@@ -233,3 +317,5 @@ Bitmap - класс, предназначенный для работы с ра�
 Метод load() запускает запрос изображения с использованием указанного пути. Это может быть URL, файловый ресурс, ресурс контента или ресурс Android.
 
 Метод into() передаёт результат загрузки - изображение - во View.
+
+### Выводы
